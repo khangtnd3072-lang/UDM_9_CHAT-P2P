@@ -61,8 +61,13 @@ def start_client():
             "message": message_text
         }
 
+        # 1. Mã hóa tin nhắn
         data = encode_message(message)
 
+        # 2. In kích thước gói tin ra terminal
+        print(f"[DEBUG] Kích thước gói tin gửi đi: {len(data)} bytes")
+
+        # 3. Gửi dữ liệu qua socket
         client.sendall(data)
 
     client.close()
