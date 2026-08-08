@@ -10,7 +10,7 @@
 |------------|-----------|
 | Lớp | 012012301302 |
 | Nhóm | Net3_Group_10 — UDM09 |
-| Ngôn ngữ | c++ |
+| Ngôn ngữ | python |
 | Mô hình | Peer-to-Peer |
 | Nền tảng | Windows |
 | Repo | 012012301302_Net3_Group_10_UDM09 |
