@@ -67,7 +67,15 @@ class FileSender:
                 if progress_callback:
                     progress_callback(bytes_sent, file_size)
 
+        result = {
+            "status": "sent",
+            "filename": filename,
+            "file_size": file_size,
+            "sha256": file_hash,
+            "total_chunks": total_chunks,
+        }
         print(f"[FILE TRANSFER] Đã gửi hoàn tất file: {filename} ({file_size} bytes)")
+        return result
 
 
 class FileReceiver:
@@ -78,11 +86,25 @@ class FileReceiver:
             os.makedirs(self.save_dir)
         self.active_transfers = {}
 
+    def process_message(self, msg):
+        """API chuẩn hóa: nhận một message file transfer (meta/chunk) và xử lý."""
+        return self.handle_incoming_message(msg)
+
+    def receive_message(self, msg):
+        """Alias tương thích ngược cho API cũ."""
+        return self.handle_incoming_message(msg)
+
     def handle_incoming_message(self, msg):
+        if not isinstance(msg, dict):
+            return None
+
         msg_type = msg.get("type")
 
         if msg_type == "file_meta":
             filename = msg.get("filename")
+            if not filename:
+                return None
+
             filepath = os.path.join(self.save_dir, filename)
             
             self.active_transfers[filename] = {
@@ -105,7 +127,15 @@ class FileReceiver:
                 return None
 
             # Giải mã hex trở lại byte dữ liệu
-            chunk_bytes = bytes.fromhex(msg.get("data"))
+            chunk_data = msg.get("data")
+            if chunk_data is None:
+                return None
+            try:
+                chunk_bytes = bytes.fromhex(chunk_data)
+            except (ValueError, TypeError):
+                print(f"[ERROR] Chunk data không hợp lệ cho file {filename}")
+                return None
+
             transfer["file_obj"].write(chunk_bytes)
             transfer["received_chunks"] += 1
 
