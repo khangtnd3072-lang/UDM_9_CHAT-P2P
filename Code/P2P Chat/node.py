@@ -1,100 +1,146 @@
-"""
-test_peer_connection.py
-------------------------
-Test "smoke test" cho peer_main.py: khoi dong 2 listener gia lap 2 peer
-tren cung may (127.0.0.1, 2 port khac nhau), cho 1 ben connect() sang ben
-kia, gui thu 1 tin nhan CHAT, va kiem tra ben nhan co nhan dung noi dung
-khong.
-
-Day la loopback local (127.0.0.1) - khong can ket noi Internet, khong can
-mo cong ra ngoai, nhung van test duoc toan bo luong TCP that (bind/listen/
-accept/connect/send/recv) giong het khi 2 peer that noi voi nhau.
-"""
-
+import argparse
 import socket
-import sys
-import os
 import threading
-import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from common.protocol import MessageType, send_message, recv_message
+from protocol import decode_message, encode_message
 
 
-def _echo_listener(port: int, received_box: list):
-    """Peer B don gian: lang nghe 1 ket noi, nhan dung 1 message roi luu lai."""
-    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_sock.bind(("127.0.0.1", port))
-    server_sock.listen(1)
-
-    conn, _addr = server_sock.accept()
-    msg_type, payload = recv_message(conn)
-    received_box.append((msg_type, payload))
-    conn.close()
-    server_sock.close()
+HOST = "127.0.0.1"
+PORT = 5000
 
 
-def test_connect_and_send_chat_message():
-    port = 51234
-    received = []
+# SERVER
 
-    listener = threading.Thread(target=_echo_listener, args=(port, received), daemon=True)
-    listener.start()
-    time.sleep(0.2)  # doi listener san sang truoc khi connect
-
-    # Peer A dong vai client: connect toi Peer B va gui CHAT
-    client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_sock.connect(("127.0.0.1", port))
-    send_message(client_sock, MessageType.CHAT, {"text": "chao ban, day la test"})
-
-    listener.join(timeout=3)
-    client_sock.close()
-
-    assert len(received) == 1, "Peer B phai nhan duoc dung 1 message"
-    msg_type, payload = received[0]
-    assert msg_type == "CHAT"
-    assert payload["text"] == "chao ban, day la test"
-    print("[OK] test_connect_and_send_chat_message")
+clients: dict[str, socket.socket] = {}
+clients_lock = threading.Lock()
 
 
-def test_two_way_messages_on_same_connection():
-    """Kiem tra gui nhieu message lien tiep tren CUNG 1 ket noi (khong bi lan/mat frame)."""
-    port = 51235
-    received = []
+def handle_client(conn, addr):
+    print(f"[+] Client ket noi: {addr}")
 
-    def _multi_msg_listener():
-        server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_sock.bind(("127.0.0.1", port))
-        server_sock.listen(1)
-        conn, _addr = server_sock.accept()
-        for _ in range(3):
-            received.append(recv_message(conn))
+    username = None
+
+    try:
+        while True:
+            message = decode_message(conn)
+
+            print(f"[RECV] {message}")
+
+            sender = message.get("sender")
+            if sender and sender != username:
+                # Lan dau nhan duoc ten, hoac ten thay doi -> dang ky/cap nhat.
+                username = sender
+                with clients_lock:
+                    clients[username] = conn
+
+            receiver = message.get("receiver")
+
+            with clients_lock:
+                receiver_socket = clients.get(receiver)
+
+            if receiver_socket is not None:
+                data = encode_message(message)
+                try:
+                    receiver_socket.sendall(data)
+                    print(f"[SEND] {username} -> {receiver}")
+                except OSError as e:
+                    print(f"[ERROR] Gui toi {receiver} that bai: {e}")
+            else:
+                print(f"[INFO] {receiver} chua online")
+
+    except Exception as e:
+        print(f"[ERROR] {addr}: {e}")
+
+    finally:
+        with clients_lock:
+            if username in clients:
+                del clients[username]
         conn.close()
-        server_sock.close()
+        print(f"[-] Client ngat ket noi: {addr}")
 
-    listener = threading.Thread(target=_multi_msg_listener, daemon=True)
-    listener.start()
-    time.sleep(0.2)
 
-    client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_sock.connect(("127.0.0.1", port))
-    send_message(client_sock, MessageType.CHAT, {"text": "tin 1"})
-    send_message(client_sock, MessageType.CHAT, {"text": "tin 2"})
-    send_message(client_sock, MessageType.CHAT, {"text": "tin 3"})
+def start_server():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((HOST, PORT))
+    server.listen()
 
-    listener.join(timeout=3)
-    client_sock.close()
+    print(f"Server dang chay tai {HOST}:{PORT}")
 
-    assert [p["text"] for _, p in received] == ["tin 1", "tin 2", "tin 3"], (
-        "3 message gui lien tiep phai duoc nhan dung thu tu, khong bi lan frame"
+    while True:
+        conn, addr = server.accept()
+        thread = threading.Thread(
+            target=handle_client, args=(conn, addr), daemon=True
+        )
+        thread.start()
+
+
+#CLIENT
+
+def receive_messages(sock):
+    while True:
+        try:
+            message = decode_message(sock)
+            print(f"\n[{message.get('sender')}] {message.get('message')}")
+
+        except Exception as e:
+            print(f"\n[ERROR] Mat ket noi server: {e}")
+            break
+
+
+def start_client():
+    username = input("Nhap ten cua ban: ")
+    receiver = input("Nhap ten nguoi nhan: ")
+
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect((HOST, PORT))
+
+    print("Da ket noi toi server.")
+    print("Nhap tin nhan, go 'exit' de thoat.")
+
+    thread = threading.Thread(
+        target=receive_messages, args=(client,), daemon=True
     )
-    print("[OK] test_two_way_messages_on_same_connection")
+    thread.start()
+
+    while True:
+        message_text = input("Ban: ")
+
+        if message_text.lower() == "exit":
+            break
+
+        message = {
+            "type": "chat",
+            "sender": username,
+            "receiver": receiver,
+            "message": message_text,
+        }
+
+        data = encode_message(message)
+        print(f"[DEBUG] Kich thuoc goi tin gui di: {len(data)} bytes")
+        client.sendall(data)
+
+    client.close()
+
+
+# ==========================================================================
+# ENTRY POINT: chọn chế độ chạy
+# ==========================================================================
+def main():
+    parser = argparse.ArgumentParser(description="Chat relay Server/Client ")
+    parser.add_argument(
+        "--mode",
+        choices=["server", "client"],
+        required=True,
+        help="Chay o che do server hay client",
+    )
+    args = parser.parse_args()
+
+    if args.mode == "server":
+        start_server()
+    else:
+        start_client()
 
 
 if __name__ == "__main__":
-    test_connect_and_send_chat_message()
-    test_two_way_messages_on_same_connection()
-    print("\nTat ca test PASS.")
+    main()
