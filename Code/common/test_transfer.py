@@ -3,8 +3,8 @@ import threading
 import time
 import os
 
-from transfer import FileSender, FileReceiver
-from protocol import decode_message
+from Code.common.transfer import FileSender, FileReceiver
+from Code.common.protocol import decode_message
 
 HOST = "127.0.0.1"
 PORT = 6000

@@ -1,7 +1,7 @@
 import os
 import hashlib
 import math
-from protocol import encode_message, decode_message
+from Code.common.protocol import encode_message, decode_message
 
 # Giới hạn kích thước file gửi tối đa: 10 MB (theo YCKT đề tài)
 MAX_FILE_SIZE = 10 * 1024 * 1024  
