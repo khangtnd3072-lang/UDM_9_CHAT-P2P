@@ -101,6 +101,9 @@ def _validate_message(payload: Dict[str, Any]) -> None:
         "ack",
         "file_meta",
         "file_chunk",
+        "handshake_init",  # Thêm Handshake Init
+        "handshake_resp",  # Thêm Handshake Resp
+        "enc", # Thêm Tin Nhắn Mã Hóa E2EE
     }
 
     if payload["type"] not in allowed_types:
