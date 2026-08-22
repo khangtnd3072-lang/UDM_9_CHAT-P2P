@@ -3,7 +3,7 @@ import socket
 import threading
 import traceback
 
-from protocol import decode_message, encode_message
+from Code.P2PChat.src.message.protocol import decode_message, encode_message
 
 # Handshake / crypto helpers (optional secure mode)
 try:

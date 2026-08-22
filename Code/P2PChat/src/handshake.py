@@ -131,7 +131,7 @@ import logging
 from typing import Dict, Any
 
 from Code.P2PChat.src.crypto import CryptoManager
-from Code.P2PChat.src.protocol import encode_message, decode_message
+from Code.P2PChat.src.message.protocol import encode_message, decode_message
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [HANDSHAKE]: %(message)s", datefmt="%H:%M:%S")
 

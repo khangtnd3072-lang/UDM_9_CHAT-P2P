@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from Code.P2PChat.src.protocol import decode_message
+from Code.P2PChat.src.message.protocol import decode_message
 from Code.P2PChat.src.transfer import (
     FileReceiver,
     FileSender,
