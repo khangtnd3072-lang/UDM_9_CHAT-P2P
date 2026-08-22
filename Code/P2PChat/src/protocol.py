@@ -99,6 +99,8 @@ def _validate_message(payload: Dict[str, Any]) -> None:
         "text",
         "system",
         "ack",
+        "file_meta",
+        "file_chunk",
     }
 
     if payload["type"] not in allowed_types:

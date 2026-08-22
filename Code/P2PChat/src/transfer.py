@@ -3,7 +3,7 @@ import math
 import os
 from typing import Callable, Dict, Optional
 
-from Code.common.protocol import encode_message
+from Code.P2PChat.src.protocol import encode_message
 
 
 def log_transfer(message: str, level: str = "INFO"):
@@ -12,7 +12,7 @@ def log_transfer(message: str, level: str = "INFO"):
 
 # Giới hạn kích thước file gửi tối đa: 10 MB
 MAX_FILE_SIZE = 10 * 1024 * 1024
-CHUNK_SIZE = 64 * 1024  # 64 KB mỗi chunk gửi qua socket
+CHUNK_SIZE = 32 * 1024  # 64 KB mỗi chunk gửi qua socket
 DEFAULT_SAVE_DIR = "./downloads"
 
 
