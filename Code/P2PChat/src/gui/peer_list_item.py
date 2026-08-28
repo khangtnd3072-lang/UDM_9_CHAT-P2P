@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel
 
-from Code.P2PChat.src.gui.models import Peer
+from models import Peer
 
 
 class PeerListItemWidget(QWidget):

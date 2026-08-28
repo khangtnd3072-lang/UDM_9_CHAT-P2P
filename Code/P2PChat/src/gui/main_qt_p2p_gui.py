@@ -12,11 +12,11 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from Code.P2PChat.src.gui.peer_repository import PeerRepository
-from Code.P2PChat.src.gui.peer_sidebar import PeerSidebar
-from Code.P2PChat.src.gui.chat_panel import ChatPanel
-from Code.P2PChat.src.gui.peer_details_panel import PeerDetailsPanel
-from Code.P2PChat.src.gui.styles import STYLE
+from peer_repository import PeerRepository
+from peer_sidebar import PeerSidebar
+from chat_panel import ChatPanel
+from peer_details_panel import PeerDetailsPanel
+from styles import STYLE
 
 
 class MainWindow(QMainWindow):
