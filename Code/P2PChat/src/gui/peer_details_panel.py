@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QFrame, QVBoxLayout, QLabel, QPushButton
 )
 
-from detail_row import DetailRow
+from Code.P2PChat.src.gui.detail_row import DetailRow
 
 
 class PeerDetailsPanel(QFrame):
