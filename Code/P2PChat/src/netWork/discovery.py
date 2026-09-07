@@ -1,28 +1,3 @@
-"""
-Discovery Server Module - Peer Discovery & Registration
-========================================================
-
-Chức năng:
-- Peer Registration (REGISTER): Peer đăng ký vào mạng
-- Peer Lookup (LOOKUP): Tìm kiếm peer khác
-- Heartbeat Mechanism: Kiểm tra peer còn online
-- Peer Database: Quản lý danh sách peer
-- Auto Cleanup: Xóa peer offline tự động
-
-Architecture:
-    Peer A ──┐
-    Peer B ──┼─→ Discovery Server ←──┐
-    Peer C ──┘                        │
-             REGISTER, LOOKUP         │
-             HEARTBEAT                └── Database
-
-Protocol:
-    REGISTER:  {type: 'register', peer_name, ip, port, fingerprint}
-    LOOKUP:    {type: 'lookup', peer_name}
-    HEARTBEAT: {type: 'heartbeat', peer_name}
-    LIST:      {type: 'list_peers'}
-"""
-
 import logging
 import socket
 import threading
@@ -97,13 +72,13 @@ class DiscoveryServer:
         self.server_running = False
         self.server_socket: Optional[socket.socket] = None
         
-        logger.info(f"✓ Khởi tạo Discovery Server @ {host}:{port}")
+        logger.info(f" Khởi tạo Discovery Server @ {host}:{port}")
     
     def start(self):
         """Khởi động discovery server"""
         thread = threading.Thread(target=self._run_server, daemon=True)
         thread.start()
-        logger.info(f"✓ Discovery Server bắt đầu listening trên {self.host}:{self.port}")
+        logger.info(f" Discovery Server bắt đầu listening trên {self.host}:{self.port}")
     
     def _run_server(self):
         """Server thread - chấp nhận kết nối từ peer"""
@@ -441,11 +416,11 @@ def register_with_discovery(
         response = decode_message(sock, timeout=timeout)
         sock.close()
         
-        logger.info(f"✓ Đã đăng ký với Discovery Server: {response}")
+        logger.info(f" Đã đăng ký với Discovery Server: {response}")
         return response
     
     except Exception as e:
-        logger.error(f"✗ Lỗi đăng ký: {e}")
+        logger.error(f" Lỗi đăng ký: {e}")
         return {"error": str(e)}
 
 
@@ -475,14 +450,14 @@ def lookup_peer_from_discovery(
         sock.close()
         
         if response.get("status") == "found":
-            logger.info(f"✓ Tìm thấy peer '{peer_name}': {response['ip']}:{response['port']}")
+            logger.info(f" Tìm thấy peer '{peer_name}': {response['ip']}:{response['port']}")
         else:
-            logger.warning(f"✗ Peer '{peer_name}' không tìm thấy hoặc offline")
+            logger.warning(f" Peer '{peer_name}' không tìm thấy hoặc offline")
         
         return response
     
     except Exception as e:
-        logger.error(f"✗ Lỗi lookup: {e}")
+        logger.error(f" Lỗi lookup: {e}")
         return {"error": str(e)}
 
 
@@ -511,11 +486,11 @@ def send_heartbeat_to_discovery(
         response = decode_message(sock, timeout=timeout)
         sock.close()
         
-        logger.debug(f"✓ Heartbeat gửi tới Discovery Server")
+        logger.debug(f" Heartbeat gửi tới Discovery Server")
         return response
     
     except Exception as e:
-        logger.error(f"✗ Lỗi gửi heartbeat: {e}")
+        logger.error(f" Lỗi gửi heartbeat: {e}")
         return {"error": str(e)}
 
 
@@ -544,12 +519,12 @@ def list_peers_from_discovery(
         
         if response.get("status") == "success":
             peers = response.get("peers", [])
-            logger.info(f"✓ Tìm thấy {len(peers)} peer online")
+            logger.info(f" Tìm thấy {len(peers)} peer online")
         
         return response
     
     except Exception as e:
-        logger.error(f"✗ Lỗi list peers: {e}")
+        logger.error(f" Lỗi list peers: {e}")
         return {"error": str(e)}
 
 
