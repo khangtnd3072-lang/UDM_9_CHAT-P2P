@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 class P2PPeer:
 
-    def __init__(self, peer_name: str, listen_host: str = "127.0.0.1", listen_port: int = 5000, secure: bool = True):
+    def __init__(self, peer_name: str, listen_host: str = "192.168.1.10", listen_port: int = 12000, secure: bool = True):
         self.peer_name = peer_name
         self.listen_host = listen_host
         self.listen_port = listen_port
@@ -418,8 +418,8 @@ def interactive_peer_cli(peer: P2PPeer):
 def main():
     parser = argparse.ArgumentParser(description="P2P Chat - True Peer-to-Peer (No Relay Server)")
     parser.add_argument("--name", required=True, help="Tên của Peer ")
-    parser.add_argument("--host", default="127.0.0.1", help="Host để listening")
-    parser.add_argument("--port", type=int, default=5000, help="Port để listening")
+    parser.add_argument("--host", default="192.168.1.10", help="Host để listening")
+    parser.add_argument("--port", type=int, default=12000, help="Port để listening")
     parser.add_argument("--secure", action="store_true", default=True, help="Dùng E2EE encryption")
     parser.add_argument("--no-secure", action="store_true", help="Không dùng encryption")
     
