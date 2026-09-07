@@ -7,16 +7,15 @@ import socket
 import time
 import unittest
 
-# Adjust imports depending on how you run tests (run from Code/P2PChat/src)
-try:
-    from protocol import encode_message, decode_message
-    from handshake import generate_rsa_keypair, client_start_handshake, client_finish_handshake, server_handle_init_and_respond, send_encrypted, recv_encrypted
-except Exception:
-    # If test is invoked from repo root, adjust sys.path
-    import sys
-    sys.path.insert(0, "Code/P2PChat/src")
-    from protocol import encode_message, decode_message
-    from handshake import generate_rsa_keypair, client_start_handshake, client_finish_handshake, server_handle_init_and_respond, send_encrypted, recv_encrypted
+from Code.P2PChat.src.crypto import CryptoManager
+from Code.P2PChat.src.message.protocol import encode_message, decode_message
+from Code.P2PChat.src.handshake import (
+    client_finish_handshake,
+    client_start_handshake,
+    recv_encrypted,
+    send_encrypted,
+    server_handle_init_and_respond,
+)
 
 
 HOST = "127.0.0.1"
@@ -27,10 +26,10 @@ class TestProtocolHandshake(unittest.TestCase):
     def test_encode_decode_roundtrip(self):
         s1, s2 = socket.socketpair() if hasattr(socket, "socketpair") else _make_local_pair()
         try:
-            payload = {"type": "test", "msg": "xin chao"}
+            payload = {"type": "chat", "msg": "xin chao"}
             s1.sendall(encode_message(payload))
             got = decode_message(s2, timeout=1.0)
-            self.assertEqual(got["type"], "test")
+            self.assertEqual(got["type"], "chat")
             self.assertEqual(got["msg"], "xin chao")
         finally:
             s1.close(); s2.close()
@@ -43,12 +42,11 @@ class TestProtocolHandshake(unittest.TestCase):
             srv.bind((HOST, PORT))
             srv.listen(1)
             conn, _ = srv.accept()
-            # server generates keys
-            sk, spub = generate_rsa_keypair()
+            server_crypto = CryptoManager()
             try:
-                f = server_handle_init_and_respond(conn, sk, spub)
+                server_handle_init_and_respond(conn, server_crypto)
                 # receive encrypted payload from client, decrypt and assert
-                msg = recv_encrypted(conn, f, timeout=5.0)
+                msg = recv_encrypted(conn, server_crypto, timeout=5.0)
                 self.assertEqual(msg.get("hello"), "world")
             finally:
                 conn.close()
@@ -62,13 +60,11 @@ class TestProtocolHandshake(unittest.TestCase):
         cli = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         cli.connect((HOST, PORT))
         try:
-            csk, cpub = generate_rsa_keypair()
-            # client sends init
-            resp = client_start_handshake(cli, "client1", cpub)
-            # finish (decrypt session key) using client's private key
-            f_client = client_finish_handshake(resp, csk)
+            client_crypto = CryptoManager()
+            resp = client_start_handshake(cli, "client1", client_crypto)
+            client_finish_handshake(resp, client_crypto)
             # now send encrypted message
-            send_encrypted(cli, f_client, {"hello": "world"})
+            send_encrypted(cli, client_crypto, {"hello": "world"})
         finally:
             cli.close()
 

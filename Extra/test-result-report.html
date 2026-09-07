@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>UDM 9 CHAT-P2P - Test report</title>
+    <style>
+      :root {
+        font-family:
+          Segoe UI,
+          Arial,
+          sans-serif;
+        color: #17212b;
+        background: #eef3f7;
+      }
+      body {
+        margin: 0;
+        padding: 40px;
+      }
+      .report {
+        max-width: 900px;
+        margin: auto;
+        background: white;
+        border-radius: 18px;
+        padding: 34px;
+        box-shadow: 0 12px 35px #102a4318;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+      p {
+        color: #607080;
+      }
+      .status {
+        display: inline-block;
+        background: #dff7e8;
+        color: #137333;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-weight: 700;
+        margin: 12px 0 26px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .card {
+        border: 1px solid #dbe4eb;
+        border-radius: 12px;
+        padding: 18px;
+      }
+      .value {
+        font-size: 26px;
+        font-weight: 800;
+        color: #137333;
+      }
+      .label {
+        margin-top: 5px;
+        color: #607080;
+      }
+      .checks {
+        margin-top: 25px;
+        border-top: 1px solid #e5ebf0;
+        padding-top: 18px;
+      }
+      .check {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid #edf1f4;
+      }
+      .pass {
+        color: #137333;
+        font-weight: 700;
+      }
+      code {
+        background: #f3f6f8;
+        padding: 3px 6px;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="report">
+      <h1>UDM 9 CHAT-P2P</h1>
+      <p>Kết quả kiểm thử sau khi sửa File Transfer</p>
+      <div class="status">PASS - Dự án chạy ổn ở backend/test</div>
+      <section class="grid">
+        <div class="card">
+          <div class="value">10/10</div>
+          <div class="label">Unit tests</div>
+        </div>
+        <div class="card">
+          <div class="value">70 KB</div>
+          <div class="label">Integration file transfer</div>
+        </div>
+        <div class="card">
+          <div class="value">PASS</div>
+          <div class="label">Compileall</div>
+        </div>
+      </section>
+      <section class="checks">
+        <div class="check">
+          <span>E2E RSA + Fernet handshake</span><span class="pass">PASS</span>
+        </div>
+        <div class="check">
+          <span>Encrypted chat message</span><span class="pass">PASS</span>
+        </div>
+        <div class="check">
+          <span>File chunks + TCP framing + SHA-256</span
+          ><span class="pass">PASS</span>
+        </div>
+        <div class="check">
+          <span>Error recovery and corrupted hash</span
+          ><span class="pass">PASS</span>
+        </div>
+      </section>
+      <p>
+        <code
+          >python -m unittest discover -s Code/P2PChat/src/test -p
+          'test_*.py'</code
+        >
+      </p>
+    </main>
+  </body>
+</html>

@@ -12,11 +12,14 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
+
 from peer_repository import PeerRepository
 from peer_sidebar import PeerSidebar
 from chat_panel import ChatPanel
 from peer_details_panel import PeerDetailsPanel
 from styles import STYLE
+
+from gui.network_worker import PeerWorker
 
 
 class MainWindow(QMainWindow):
@@ -31,6 +34,7 @@ class MainWindow(QMainWindow):
 
         self.selected_peer = None
         self.repository = PeerRepository()
+        self.worker = None  ## khởi tạo khi kết nối Peer
 
         self.build_ui()
         self.apply_style()
@@ -140,27 +144,65 @@ class MainWindow(QMainWindow):
         self.chat_panel.set_peer(peer)
         self.details_panel.set_peer(peer)
 
+    # def connect_peer(self):
+    #     if not self.selected_peer:
+    #         QMessageBox.information(
+    #             self,
+    #             "Connect",
+    #             "Hãy chọn một Peer trước."
+    #         )
+    #         return
+
+    #     if not self.selected_peer.is_online:
+    #         QMessageBox.warning(
+    #             self,
+    #             "Connect",
+    #             "Peer này đang Offline."
+    #         )
+    #         return
+
+    #     self.chat_panel.set_connection_status("Connected")
+    #     self.details_panel.set_status("Connected")
+    #     self.chat_panel.append_system_message()
+
     def connect_peer(self):
         if not self.selected_peer:
-            QMessageBox.information(
-                self,
-                "Connect",
-                "Hãy chọn một Peer trước."
-            )
+            QMessageBox.information(self, "Connect", "Hãy chọn một Peer trước.")
             return
-
+        
         if not self.selected_peer.is_online:
-            QMessageBox.warning(
-                self,
-                "Connect",
-                "Peer này đang Offline."
-            )
+            QMessageBox.warning(self, "Connect", "Peer này đang Offline.")
             return
 
-        self.chat_panel.set_connection_status("Connected")
-        self.details_panel.set_status("Connected")
-        self.chat_panel.append_system_message()
+        # Nếu đang có kết nối cũ thì ngắt trước khi tạo kết nối mới
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
 
+        try:
+            import socket
+
+            # Lấy IP và Port từ object peer được chọn
+            peer_ip = getattr(self.selected_peer, "ip", "127.0.0.1")
+            peer_port = int(getattr(self.selected_peer, "port", 8080))
+
+            # 1. Khởi tạo Socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((peer_ip, peer_port))
+
+            # 2. Khởi tạo Worker (Đóng vai trò Client gửi kết nối)
+            self.worker = PeerWorker(sock=sock, is_server=False, my_id="My_Node")
+
+            # 3. Kết nối các Signal từ Worker vào các Slot xử lý UI
+            self.worker.sig_connected.connect(self.on_peer_connected)
+            self.worker.sig_chat_received.connect(self.on_chat_received)
+            self.worker.sig_error.connect(self.on_network_error)
+
+            # 4. Kích hoạt QThread
+            self.worker.start()
+            self.statusBar().showMessage(f"Đang kết nối (Handshake) với {peer_ip}:{peer_port}...")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Lỗi kết nối", f"Không thể kết nối Socket: {str(e)}")
     def send_message(self):
         text = self.chat_panel.message_input.text().strip()
 
@@ -183,6 +225,7 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self.worker.send_chat_msg(text)
         self.chat_panel.append_user_message(text)
         self.chat_panel.message_input.clear()
 
@@ -206,6 +249,32 @@ class MainWindow(QMainWindow):
 
     def apply_style(self):
         self.setStyleSheet(STYLE)
+
+
+
+    # --- XỬ LÝ DỮ LIỆU TỪ WORKER ---
+
+    def on_peer_connected(self, peer_id: str, fingerprint: str):
+        """Gọi khi Handshake thành công: Cập nhật giao diện & Fingerprint SHA-256."""
+        self.chat_panel.set_connection_status("Connected")
+        self.details_panel.set_status("Connected")
+        
+        # Cập nhật thông tin Fingerprint lên panel thông tin chi tiết
+        if hasattr(self.details_panel, "lbl_fingerprint"):
+            self.details_panel.lbl_fingerprint.setText(fingerprint)
+
+        self.chat_panel.append_system_message()
+        self.statusBar().showMessage(f"Đã kết nối an toàn với {peer_id} | FP: {fingerprint[:16]}...")
+
+    def on_chat_received(self, sender: str, text: str):
+        """Gọi khi nhận được tin nhắn chat đã giải mã từ Worker."""
+        self.chat_panel.append_user_message(f"[{sender}]: {text}")
+
+    def on_network_error(self, err_msg: str):
+        """Xử lý khi ngắt kết nối hoặc lỗi giải mã."""
+        self.chat_panel.set_connection_status("Disconnected")
+        self.details_panel.set_status("Disconnected")
+        QMessageBox.warning(self, "Lỗi Mạng", f"Kết nối bị ngắt hoặc gặp lỗi: {err_msg}")
 
 
 class P2PChatApplication:

@@ -2,6 +2,20 @@ import os
 import socket
 import threading
 import logging
+import sys
+from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+# Allow running this file directly from the repository root.
+for parent in Path(__file__).resolve().parents:
+    if (parent / "Code").exists():
+        sys.path.insert(0, str(parent))
+        break
+
 from Code.P2PChat.src.crypto import CryptoManager
 from Code.P2PChat.src.handshake import (
     client_start_handshake,
@@ -10,7 +24,7 @@ from Code.P2PChat.src.handshake import (
     send_encrypted,
     recv_encrypted,
 )
-from Code.P2PChat.src.transfer import FileSender, FileReceiver, CHUNK_SIZE
+from Code.P2PChat.src.transfer import FileSender, FileReceiver
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(threadName)s]: %(message)s", datefmt="%H:%M:%S")
 
@@ -33,9 +47,13 @@ def run_server(server_sock: socket.socket, crypto_server: CryptoManager):
         save_path = "recv_" + file_meta["filename"]
         receiver = FileReceiver(save_path, file_meta["filesize"], crypto_mgr=crypto_server)
 
+        # TCP is a stream: receive framed messages instead of guessing a recv size.
         for i in range(file_meta["total_chunks"]):
-            chunk_data = server_sock.recv(CHUNK_SIZE + 100)  # Thêm buffer cho Fernet overhead
-            receiver.write_chunk(i, chunk_data)
+            chunk_message = recv_encrypted(server_sock, crypto_server)
+            receiver.write_chunk(
+                chunk_message["chunk_index"],
+                bytes.fromhex(chunk_message["data"]),
+            )
 
         logging.info(f"Server nhận file hoàn tất! Trạng thái: {receiver.is_complete()}")
 
@@ -78,10 +96,16 @@ def run_client(client_sock: socket.socket, crypto_client: CryptoManager):
             "total_chunks": sender.total_chunks
         })
 
-        # Gửi từng Chunk đã mã hóa
+        # Fernet chunk được bọc trong message có framing TCP.
         while not sender.is_complete():
+            chunk_index = sender.current_chunk
             chunk_enc = sender.get_next_chunk()
-            client_sock.sendall(chunk_enc)
+            send_encrypted(client_sock, crypto_client, {
+                "type": "file_chunk",
+                "filename": sender.filename,
+                "chunk_index": chunk_index,
+                "data": chunk_enc.hex(),
+            })
 
         logging.info("Client đã gửi toàn bộ Chunk file mã hóa thành công!")
 

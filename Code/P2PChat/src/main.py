@@ -24,6 +24,11 @@ import subprocess
 import os
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Ensure repo root is importable when this file is launched directly as a script
 for parent in Path(__file__).resolve().parents:
     if (parent / "Code").exists():
@@ -155,7 +160,7 @@ def run_p2p(args):
     
     print(f"{Colors.OKCYAN}Khởi chạy P2P Peer: {args.name}{Colors.ENDC}")
     try:
-        from Code.P2PChat.src.p2p_peer import P2PPeer, interactive_peer_cli
+        from Code.P2PChat.src.netWork.p2p_peer import P2PPeer, interactive_peer_cli
         
         peer = P2PPeer(
             peer_name=args.name,
