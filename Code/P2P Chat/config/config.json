@@ -1,0 +1,26 @@
+{
+    "client": {
+        "host": "127.0.0.1",
+        "port": 5000
+    },
+    "discovery_server": {
+        "host": "127.0.0.1",
+        "port": 37020
+    },
+    "logging": {
+        "level": "INFO",
+        "directory": "logs",
+        "client_file": "client.log",
+        "discovery_server_file": "discovery_server.log",
+        "max_bytes": 5242880,
+        "backup_count": 3
+    },
+    "protocol": {
+        "max_packet_size": 131072,
+        "version": "1.0"
+    },
+    "transfer": {
+        "chunk_size": 32768,
+        "max_file_size": 104857600
+    }
+}

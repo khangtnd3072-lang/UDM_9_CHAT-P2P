@@ -1,68 +1,86 @@
-"""Centralized logging configuration for the P2P Chat project.
-
-Usage:
-    from Code.P2PChat.src.logging_config import configure_logging
-    configure_logging()
-
-The configuration writes logs to both the console and a rotating file.
-It is safe to call more than once.
-"""
-from __future__ import annotations
+"""Centralized safe logging configuration."""
 
 import logging
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
-DEFAULT_LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
-DEFAULT_LOG_FILE = DEFAULT_LOG_DIR / "p2pchat.log"
-DEFAULT_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+from .config import (
+    BASE_DIR,
+    LOG_DIRECTORY,
+    CLIENT_LOG_FILE,
+    DISCOVERY_SERVER_LOG_FILE,
+    LOG_LEVEL,
+    LOG_MAX_BYTES,
+    LOG_BACKUP_COUNT,
+)
+
+_CONFIGURED = False
 
 
-def configure_logging(
-    level: int = logging.INFO,
-    log_file: str | Path = DEFAULT_LOG_FILE,
-    console: bool = True,
-    max_bytes: int = 1_000_000,
-    backup_count: int = 3,
-) -> logging.Logger:
-    """Configure project-wide console + rotating-file logging."""
+def _handler(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    handler = RotatingFileHandler(
+        path,
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
+        encoding="utf-8",
+    )
+
+    handler.setFormatter(
+        logging.Formatter(
+            "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        )
+    )
+
+    return handler
+
+
+def setup_logging():
+    global _CONFIGURED
+
+    if _CONFIGURED:
+        return
+
+    level = getattr(
+        logging,
+        str(LOG_LEVEL).upper(),
+        logging.INFO,
+    )
+
     root = logging.getLogger()
     root.setLevel(level)
 
-    formatter = logging.Formatter(DEFAULT_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
-    target = Path(log_file)
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    existing_files = {
-        Path(getattr(h, "baseFilename", "")).resolve()
-        for h in root.handlers
-        if isinstance(h, RotatingFileHandler)
-    }
-    if target.resolve() not in existing_files:
-        file_handler = RotatingFileHandler(
-            target, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+    if not root.handlers:
+        root.addHandler(
+            _handler(
+                BASE_DIR
+                / LOG_DIRECTORY
+                / CLIENT_LOG_FILE
+            )
         )
-        file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
-        root.addHandler(file_handler)
 
-    if console and not any(getattr(h, "_p2p_console", False) for h in root.handlers):
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(level)
-        console_handler.setFormatter(formatter)
-        console_handler._p2p_console = True
-        root.addHandler(console_handler)
+    discovery_logger = logging.getLogger("discovery_server")
+    discovery_logger.setLevel(level)
+    discovery_logger.propagate = False
 
-    return logging.getLogger("p2pchat")
+    if not discovery_logger.handlers:
+        discovery_logger.addHandler(
+            _handler(
+                BASE_DIR
+                / LOG_DIRECTORY
+                / DISCOVERY_SERVER_LOG_FILE
+            )
+        )
 
-
-def set_log_level(level: int | str) -> None:
-    """Change the level for the configured root logger at runtime."""
-    if isinstance(level, str):
-        level = getattr(logging, level.upper())
-    logging.getLogger().setLevel(level)
-    for handler in logging.getLogger().handlers:
-        handler.setLevel(level)
+    _CONFIGURED = True
 
 
-__all__ = ["configure_logging", "set_log_level", "DEFAULT_LOG_FILE"]
+def get_logger(name=None):
+    setup_logging()
+    return logging.getLogger(name)
+
+
+def get_discovery_server_logger():
+    setup_logging()
+    return logging.getLogger("discovery_server")
