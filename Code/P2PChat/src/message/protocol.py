@@ -95,21 +95,37 @@ def _validate_message(payload: Dict[str, Any]) -> None:
     # Current project uses "chat"
     # Keep compatibility with existing node.py.
     allowed_types = {
-        "chat",
-        "text",
-        "system",
-        "ack",
-        "file_meta",
-        "file_chunk",
-        "handshake_init",  # Thêm Handshake Init
-        "handshake_resp",  # Thêm Handshake Resp
-        "enc", # Thêm Tin Nhắn Mã Hóa E2EE
+    "chat",
+    "text",
+    "system",
+    "ack",
+    "file_meta",
+    "file_chunk",
+    "handshake_init",
+    "handshake_resp",
+    "enc",
+    "error",
+    "test",
+}
+    # Optional fields for Reply / Forward / UI
+    optional_fields = {
+        "reply_to_id": str,
+        "forward_from": str,
+        "avatar": str,
+        "emoji": str,
     }
-
+    for field, field_type in optional_fields.items():
+        if field in payload and payload[field] is not None:
+            if not isinstance(payload[field], field_type):
+                raise ValueError(
+                    f"{field} must be a {field_type.__name__}"
+                )
     if payload["type"] not in allowed_types:
-        raise ValueError(
-            f"Unsupported message type: {payload['type']}"
-        )
+            raise ValueError(
+                f"Unsupported message type: {payload['type']}"
+                 )
+           
+        
 
 
 def encode_message(payload: Dict[str, Any]) -> bytes:
