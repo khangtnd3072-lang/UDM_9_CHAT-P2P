@@ -1,548 +1,315 @@
+"""UDP broadcast-based peer discovery service for P2PChat."""
+
+import json
 import logging
 import socket
 import threading
 import time
-import json
-from typing import Dict, Optional, List, Tuple
-from dataclasses import dataclass, field
-from datetime import datetime
+from typing import Callable, Optional
 
-from Code.P2PChat.src.message.protocol import encode_message, decode_message
-
-# Cấu hình logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] [%(levelname)s] [DISCOVERY]: %(message)s",
-    datefmt="%H:%M:%S"
+from security.jwt_handler import JWTHandler
+from config import (
+    DISCOVERY_PORT,
+    PEER_TIMEOUT,
+    PRESENCE_INTERVAL,
 )
+
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class PeerInfo:
-    """Thông tin của một Peer"""
-    peer_name: str
-    ip: str
-    port: int
-    fingerprint: str
-    status: str = "online"  # online, offline
-    last_heartbeat: float = field(default_factory=time.time)
-    registered_at: datetime = field(default_factory=datetime.now)
-    
-    def is_alive(self, timeout: int = 30) -> bool:
-        """Kiểm tra peer còn sống (heartbeat < timeout seconds)"""
-        return time.time() - self.last_heartbeat < timeout
-    
-    def to_dict(self) -> dict:
-        """Convert thành dict"""
-        return {
-            "peer_name": self.peer_name,
-            "ip": self.ip,
-            "port": self.port,
-            "fingerprint": self.fingerprint,
-            "status": self.status,
-            "last_heartbeat": self.last_heartbeat,
-            "registered_at": self.registered_at.isoformat()
-        }
+DISCOVERY          = "discovery"
+DISCOVERY_RESPONSE = "discovery_response"
 
 
-class DiscoveryServer:
-    """
-    Discovery Server - Quản lý peer registration & lookup
-    
-    Attributes:
-        host: IP để binding
-        port: Port để listening
-        peers_db: Database lưu trữ peer info {peer_name -> PeerInfo}
-        peers_lock: Lock cho thread-safe access
-        server_running: Flag để control server
-        heartbeat_timeout: Timeout để coi peer offline (seconds)
-    """
-    
-    def __init__(self, host: str = "127.0.0.1", port: int = 5555, heartbeat_timeout: int = 30):
-        self.host = host
-        self.port = port
-        self.heartbeat_timeout = heartbeat_timeout
-        
-        # Peer database
-        self.peers_db: Dict[str, PeerInfo] = {}
-        self.peers_lock = threading.Lock()
-        
-        # Server control
-        self.server_running = False
-        self.server_socket: Optional[socket.socket] = None
-        
-        logger.info(f" Khởi tạo Discovery Server @ {host}:{port}")
-    
-    def start(self):
-        """Khởi động discovery server"""
-        thread = threading.Thread(target=self._run_server, daemon=True)
-        thread.start()
-        logger.info(f" Discovery Server bắt đầu listening trên {self.host}:{self.port}")
-    
-    def _run_server(self):
-        """Server thread - chấp nhận kết nối từ peer"""
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(10)
-        self.server_running = True
-        
-        logger.info(f"[SERVER] Discovery Server listening on {self.host}:{self.port}")
-        
-        try:
-            while self.server_running:
+class DiscoveryService:
+    """UDP broadcast peer discovery. JWT token is cached until expiry, the
+    broadcast socket is reused (no per-call FD churn), and responses go to
+    (ip, DISCOVERY_PORT) rather than the sender's ephemeral port."""
+
+    # How long (seconds) the cached JWT is considered fresh.
+    # Slightly less than JWT_EXPIRE_HOURS to ensure we never send an expired one.
+    _TOKEN_REFRESH_SECS = 600   # 10 minutes
+
+    def __init__(
+        self,
+        username:        str,
+        listen_port:     int,
+        peer_id:         str,
+        fingerprint:     str,
+        public_key_pem:  str,
+        private_key_pem: str,
+    ) -> None:
+        self.username        = username
+        self.listen_port     = listen_port
+        self.peer_id         = peer_id
+        self.fingerprint     = fingerprint
+        self.public_key_pem  = public_key_pem
+        self.private_key_pem = private_key_pem
+
+        # instance_id lets us discard our own broadcast echoes.
+        self.instance_id = f"{username}-{listen_port}"
+
+        self.running: bool = False
+
+        # Listener socket (bound to DISCOVERY_PORT, shared across all operations).
+        self._listen_sock: Optional[socket.socket] = None
+
+        # Persistent broadcast socket (reused for all outgoing broadcasts).
+        self._bcast_sock:  Optional[socket.socket] = None
+
+        self._listener_thread:  Optional[threading.Thread] = None
+        self._broadcast_thread: Optional[threading.Thread] = None
+
+        # JWT cache — re-sign only when the token is about to expire.
+        self._cached_token:    str   = ""
+        self._token_created_at: float = 0.0
+
+        # Local peer registry (used by unit tests; P2PNode has the authoritative copy).
+        self.nearby_peers: dict[str, dict] = {}
+
+        # Callback set by P2PNode.
+        self.on_peer_found: Optional[Callable[[dict, tuple[str, int]], None]] = None
+
+    # ------------------------------------------------------------------ #
+    # Lifecycle                                                            #
+    # ------------------------------------------------------------------ #
+
+    def start(self) -> None:
+        """Bind the UDP listener socket and start listener + broadcast threads."""
+        if self.running:
+            return
+
+        # Listener socket: bound to DISCOVERY_PORT, receives broadcasts + responses.
+        listen = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        listen.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listen.settimeout(1.0)
+        listen.bind(("", DISCOVERY_PORT))
+        self._listen_sock = listen
+
+        # Broadcast socket: reused for all outgoing packets (avoids FD churn).
+        bcast = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        bcast.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self._bcast_sock = bcast
+
+        self.running = True
+
+        self._listener_thread = threading.Thread(
+            target=self._listen_loop, daemon=True, name="DiscoveryListener",
+        )
+        self._broadcast_thread = threading.Thread(
+            target=self._broadcast_loop, daemon=True, name="DiscoveryBroadcast",
+        )
+        self._listener_thread.start()
+        self._broadcast_thread.start()
+        logger.info("[DISCOVERY] Service started on UDP port %d", DISCOVERY_PORT)
+
+    def stop(self) -> None:
+        """Signal threads to stop and release all sockets."""
+        self.running = False
+
+        for sock in (self._listen_sock, self._bcast_sock):
+            if sock is not None:
                 try:
-                    conn, addr = self.server_socket.accept()
-                    logger.info(f"[SERVER] Nhận kết nối từ {addr}")
-                    
-                    # Xử lý request trên thread riêng
-                    thread = threading.Thread(
-                        target=self._handle_client,
-                        args=(conn, addr),
-                        daemon=True
-                    )
-                    thread.start()
-                except socket.timeout:
-                    continue
-                except Exception as e:
-                    logger.error(f"[SERVER] Lỗi accept: {e}")
-        finally:
-            if self.server_socket:
-                self.server_socket.close()
-    
-    def _handle_client(self, conn: socket.socket, addr: Tuple[str, int]):
-        """Xử lý request từ peer"""
+                    sock.close()
+                except OSError:
+                    pass
+        self._listen_sock = None
+        self._bcast_sock  = None
+
+        for t in (self._listener_thread, self._broadcast_thread):
+            if t is not None and t.is_alive():
+                t.join(timeout=2)
+
+        logger.info("[DISCOVERY] Service stopped.")
+
+    # ------------------------------------------------------------------ #
+    # Public                                                               #
+    # ------------------------------------------------------------------ #
+
+    def discover(self) -> None:
+        """Send a single broadcast discovery packet on the LAN."""
+        sock = self._bcast_sock
+        if sock is None:
+            return
+        packet = self._make_discovery_packet(DISCOVERY)
         try:
-            request = decode_message(conn, timeout=5.0)
-            request_type = request.get("type")
-            
-            if request_type == "register":
-                response = self._handle_register(request)
-            elif request_type == "lookup":
-                response = self._handle_lookup(request)
-            elif request_type == "heartbeat":
-                response = self._handle_heartbeat(request)
-            elif request_type == "list_peers":
-                response = self._handle_list_peers()
-            else:
-                response = {"error": "Unknown request type"}
-            
-            # Gửi response
-            conn.sendall(encode_message(response))
-            logger.info(f"[RESPONSE] {addr}: {request_type} → {response.get('status', 'error')}")
-        
-        except Exception as e:
-            logger.error(f"[ERROR] Xử lý client {addr}: {e}")
-            try:
-                error_response = {
-                    "type": "error",
-                    "error": str(e)
-                }
-                conn.sendall(encode_message(error_response))
-            except:
-                pass
-        
-        finally:
-            try:
-                conn.close()
-            except:
-                pass
-    
-    def _handle_register(self, request: dict) -> dict:
-        """Xử lý REGISTER request"""
-        peer_name = request.get("peer_name")
-        ip = request.get("ip")
-        port = request.get("port")
-        fingerprint = request.get("fingerprint")
-        
-        # Validate input
-        if not all([peer_name, ip, port, fingerprint]):
-            return {
-                "type": "error",
-                "error": "Missing required fields: peer_name, ip, port, fingerprint"
-            }
-        
-        # Register peer
-        peer_info = PeerInfo(
-            peer_name=peer_name,
-            ip=ip,
-            port=int(port),
-            fingerprint=fingerprint
-        )
-        
-        with self.peers_lock:
-            self.peers_db[peer_name] = peer_info
-        
-        logger.info(f"[REGISTER] Peer '{peer_name}' đã đăng ký: {ip}:{port}")
-        
-        return {
-            "type": "register_response",
-            "status": "success",
-            "peer_id": peer_name,
-            "message": f"Peer '{peer_name}' registered successfully"
-        }
-    
-    def _handle_lookup(self, request: dict) -> dict:
-        """Xử lý LOOKUP request"""
-        peer_name = request.get("peer_name")
-        
-        if not peer_name:
-            return {"type": "error", "error": "Missing peer_name"}
-        
-        with self.peers_lock:
-            peer = self.peers_db.get(peer_name)
-        
-        if not peer:
-            logger.warning(f"[LOOKUP] Peer '{peer_name}' không tìm thấy")
-            return {
-                "type": "lookup_response",
-                "status": "not_found",
-                "error": f"Peer '{peer_name}' not found"
-            }
-        
-        if not peer.is_alive(self.heartbeat_timeout):
-            logger.warning(f"[LOOKUP] Peer '{peer_name}' offline")
-            return {
-                "type": "lookup_response",
-                "status": "offline",
-                "error": f"Peer '{peer_name}' is offline"
-            }
-        
-        logger.info(f"[LOOKUP] Tìm thấy peer '{peer_name}': {peer.ip}:{peer.port}")
-        
-        return {
-            "type": "lookup_response",
-            "status": "found",
-            "peer_name": peer.peer_name,
-            "ip": peer.ip,
-            "port": peer.port,
-            "fingerprint": peer.fingerprint
-        }
-    
-    def _handle_heartbeat(self, request: dict) -> dict:
-        """Xử lý HEARTBEAT request"""
-        peer_name = request.get("peer_name")
-        
-        if not peer_name:
-            return {"type": "error", "error": "Missing peer_name"}
-        
-        with self.peers_lock:
-            peer = self.peers_db.get(peer_name)
-            if peer:
-                peer.last_heartbeat = time.time()
-                peer.status = "online"
-        
-        if not peer:
-            logger.warning(f"[HEARTBEAT] Peer '{peer_name}' chưa register")
-            return {
-                "type": "heartbeat_response",
-                "status": "not_registered",
-                "error": f"Peer '{peer_name}' is not registered"
-            }
-        
-        logger.debug(f"[HEARTBEAT] Nhận heartbeat từ '{peer_name}'")
-        
-        return {
-            "type": "heartbeat_response",
-            "status": "ack",
-            "peer_name": peer_name,
-            "timestamp": time.time()
-        }
-    
-    def _handle_list_peers(self) -> dict:
-        """Xử lý LIST_PEERS request"""
-        with self.peers_lock:
-            online_peers = [
-                peer.to_dict()
-                for peer in self.peers_db.values()
-                if peer.is_alive(self.heartbeat_timeout)
-            ]
-        
-        logger.info(f"[LIST_PEERS] Trả về {len(online_peers)} peer online")
-        
-        return {
-            "type": "list_peers_response",
-            "status": "success",
-            "peers": online_peers,
-            "count": len(online_peers)
-        }
-    
-    def register_peer_local(self, peer_name: str, ip: str, port: int, fingerprint: str) -> bool:
-        """
-        Đăng ký peer locally (không qua network)
-        Dùng cho testing/development
-        """
-        peer_info = PeerInfo(
-            peer_name=peer_name,
-            ip=ip,
-            port=port,
-            fingerprint=fingerprint
-        )
-        
-        with self.peers_lock:
-            self.peers_db[peer_name] = peer_info
-        
-        logger.info(f"[REGISTER_LOCAL] Peer '{peer_name}' đã đăng ký locally")
-        return True
-    
-    def lookup_peer_local(self, peer_name: str) -> Optional[PeerInfo]:
-        """
-        Tìm peer locally (không qua network)
-        Dùng cho testing/development
-        """
-        with self.peers_lock:
-            peer = self.peers_db.get(peer_name)
-        
-        if peer and peer.is_alive(self.heartbeat_timeout):
-            return peer
-        
-        return None
-    
-    def list_online_peers(self) -> List[PeerInfo]:
-        """Danh sách peer online"""
-        with self.peers_lock:
-            return [
-                peer for peer in self.peers_db.values()
-                if peer.is_alive(self.heartbeat_timeout)
-            ]
-    
-    def list_all_peers(self) -> List[PeerInfo]:
-        """Danh sách tất cả peer (online + offline)"""
-        with self.peers_lock:
-            return list(self.peers_db.values())
-    
-    def remove_peer(self, peer_name: str) -> bool:
-        """Xóa peer khỏi database"""
-        with self.peers_lock:
-            if peer_name in self.peers_db:
-                del self.peers_db[peer_name]
-                logger.info(f"[REMOVE] Peer '{peer_name}' đã xóa khỏi database")
-                return True
-        return False
-    
-    def cleanup_offline_peers(self) -> int:
-        """Xóa tất cả peer offline"""
-        with self.peers_lock:
-            offline_peers = [
-                name for name, peer in self.peers_db.items()
-                if not peer.is_alive(self.heartbeat_timeout)
-            ]
-            for name in offline_peers:
-                del self.peers_db[name]
-        
-        if offline_peers:
-            logger.info(f"[CLEANUP] Xóa {len(offline_peers)} peer offline: {offline_peers}")
-        
-        return len(offline_peers)
-    
-    def get_peer_info(self, peer_name: str) -> Optional[dict]:
-        """Lấy thông tin chi tiết của peer"""
-        with self.peers_lock:
-            peer = self.peers_db.get(peer_name)
-        
-        if peer:
-            return peer.to_dict()
-        return None
-    
-    def get_stats(self) -> dict:
-        """Lấy thống kê server"""
-        with self.peers_lock:
-            total_peers = len(self.peers_db)
-            online_peers = sum(
-                1 for peer in self.peers_db.values()
-                if peer.is_alive(self.heartbeat_timeout)
+            sock.sendto(
+                json.dumps(packet).encode("utf-8"),
+                ("255.255.255.255", DISCOVERY_PORT),
             )
-        
-        return {
-            "host": self.host,
-            "port": self.port,
-            "total_peers": total_peers,
-            "online_peers": online_peers,
-            "offline_peers": total_peers - online_peers,
-            "heartbeat_timeout": self.heartbeat_timeout
-        }
-    
-    def shutdown(self):
-        """Đóng discovery server"""
-        logger.info("[SHUTDOWN] Đóng Discovery Server...")
-        
-        self.server_running = False
-        
-        if self.server_socket:
+            logger.debug("[DISCOVERY] Broadcast sent: %s:%d", self.username, self.listen_port)
+        except OSError as exc:
+            logger.warning("[DISCOVERY] Broadcast failed: %s", exc)
+
+    # ------------------------------------------------------------------ #
+    # Internal threads                                                     #
+    # ------------------------------------------------------------------ #
+
+    def _broadcast_loop(self) -> None:
+        """Broadcast presence every PRESENCE_INTERVAL seconds."""
+        while self.running:
+            self.discover()
+            for _ in range(PRESENCE_INTERVAL * 10):
+                if not self.running:
+                    break
+                time.sleep(0.1)
+
+    def _listen_loop(self) -> None:
+        """Receive UDP packets and dispatch them."""
+        while self.running:
+            sock = self._listen_sock
+            if sock is None:
+                break
             try:
-                self.server_socket.close()
-            except:
-                pass
-        
-        with self.peers_lock:
-            self.peers_db.clear()
-        
-        logger.info("[SHUTDOWN] Discovery Server đã tắt")
+                data, address = sock.recvfrom(8192)
+                packet = json.loads(data.decode("utf-8"))
+                # json.loads accepts non-dict JSON too; packet.get() below
+                # would raise and kill this loop otherwise.
+                if not isinstance(packet, dict):
+                    logger.debug(
+                        "[DISCOVERY] Ignoring non-object UDP packet from %s", address[0])
+                    continue
+                self._handle_packet(packet, address)
+            except socket.timeout:
+                continue
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            except OSError:
+                if not self.running:
+                    break
 
+    # ------------------------------------------------------------------ #
+    # Packet handling                                                      #
+    # ------------------------------------------------------------------ #
 
-# ============================================================================
-# CLIENT SIDE - Helper functions để connect tới discovery server
-# ============================================================================
+    def _handle_packet(self, packet: dict, address: tuple[str, int]) -> None:
+        """Dispatch one inbound discovery packet."""
+        ptype = packet.get("type")
 
-def register_with_discovery(
-    discovery_host: str,
-    discovery_port: int,
-    peer_name: str,
-    peer_ip: str,
-    peer_port: int,
-    fingerprint: str,
-    timeout: float = 5.0
-) -> dict:
-    """
-    Đăng ký peer với Discovery Server
-    
-    Returns:
-        dict: Response từ server
-    """
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((discovery_host, discovery_port))
-        
-        request = {
-            "type": "register",
-            "peer_name": peer_name,
-            "ip": peer_ip,
-            "port": peer_port,
-            "fingerprint": fingerprint
-        }
-        
-        sock.sendall(encode_message(request))
-        response = decode_message(sock, timeout=timeout)
-        sock.close()
-        
-        logger.info(f" Đã đăng ký với Discovery Server: {response}")
-        return response
-    
-    except Exception as e:
-        logger.error(f" Lỗi đăng ký: {e}")
-        return {"error": str(e)}
+        if ptype == DISCOVERY:
+            # Discard our own echoes.
+            if packet.get("instance_id") == self.instance_id:
+                return
+            logger.debug("[DISCOVERY] Discovery from %s", packet.get("username"))
+            # update_peer_registry is a no-op but kept so tests can mock it.
+            self.update_peer_registry(packet, address)
+            self._notify(packet, address)
+            # Reply to (sender_ip, DISCOVERY_PORT), not the ephemeral source port.
+            self._send_response(address[0])
 
+        elif ptype == DISCOVERY_RESPONSE:
+            # Discard our own responses (can happen on loopback or certain
+            # switches that echo unicast packets back to the sender).
+            if packet.get("instance_id") == self.instance_id:
+                return
+            logger.debug("[DISCOVERY] Response from %s", packet.get("username"))
+            self.update_peer_registry(packet, address)
+            self._notify(packet, address)
 
-def lookup_peer_from_discovery(
-    discovery_host: str,
-    discovery_port: int,
-    peer_name: str,
-    timeout: float = 5.0
-) -> dict:
-    """
-    Tìm peer từ Discovery Server
-    
-    Returns:
-        dict: Thông tin peer (ip, port, fingerprint)
-    """
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((discovery_host, discovery_port))
-        
-        request = {
-            "type": "lookup",
-            "peer_name": peer_name
-        }
-        
-        sock.sendall(encode_message(request))
-        response = decode_message(sock, timeout=timeout)
-        sock.close()
-        
-        if response.get("status") == "found":
-            logger.info(f" Tìm thấy peer '{peer_name}': {response['ip']}:{response['port']}")
+    def _notify(self, packet: dict, address: tuple[str, int]) -> None:
+        """Forward a discovery packet to the node's callback."""
+        if self.on_peer_found is not None:
+            try:
+                self.on_peer_found(packet, address)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.exception("[DISCOVERY] on_peer_found raised: %s", exc)
+
+    def _send_response(self, peer_ip_or_addr) -> None:
+        """Reply to (peer_ip, DISCOVERY_PORT), not the ephemeral source port.
+        Accepts a bare IP or an (ip, port) tuple (old API, kept for tests)."""
+        sock = self._bcast_sock
+        if sock is None:
+            return
+        # Accept both old tuple form and new string form.
+        if isinstance(peer_ip_or_addr, tuple):
+            peer_ip = peer_ip_or_addr[0]
         else:
-            logger.warning(f" Peer '{peer_name}' không tìm thấy hoặc offline")
-        
-        return response
-    
-    except Exception as e:
-        logger.error(f" Lỗi lookup: {e}")
-        return {"error": str(e)}
+            peer_ip = peer_ip_or_addr
+        response = self._make_discovery_packet(DISCOVERY_RESPONSE)
+        try:
+            sock.sendto(
+                json.dumps(response).encode("utf-8"),
+                (peer_ip, DISCOVERY_PORT),
+            )
+        except OSError as exc:
+            logger.debug("[DISCOVERY] Send response error: %s", exc)
 
+    # ------------------------------------------------------------------ #
+    # Packet construction                                                  #
+    # ------------------------------------------------------------------ #
 
-def send_heartbeat_to_discovery(
-    discovery_host: str,
-    discovery_port: int,
-    peer_name: str,
-    timeout: float = 5.0
-) -> dict:
-    """
-    Gửi heartbeat tới Discovery Server
-    
-    Returns:
-        dict: Response từ server
-    """
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((discovery_host, discovery_port))
-        
-        request = {
-            "type": "heartbeat",
-            "peer_name": peer_name
+    def _get_or_refresh_token(self) -> str:
+        """Return a cached JWT, re-signing (expensive) only once it's stale."""
+        now = time.time()
+        if not self._cached_token or now - self._token_created_at > self._TOKEN_REFRESH_SECS:
+            self._cached_token    = JWTHandler.create_identity_token(
+                peer_id         = self.peer_id,
+                username        = self.username,
+                fingerprint     = self.fingerprint,
+                private_key_pem = self.private_key_pem,
+            )
+            self._token_created_at = now
+            logger.debug("[DISCOVERY] JWT refreshed")
+        return self._cached_token
+
+    def _make_discovery_packet(self, packet_type: str) -> dict:
+        """Build a DISCOVERY or DISCOVERY_RESPONSE packet ready for UDP transmission."""
+        return {
+            "type":           packet_type,
+            "instance_id":    self.instance_id,
+            "peer_id":        self.peer_id,
+            "username":       self.username,
+            "fingerprint":    self.fingerprint,
+            "public_key":     self.public_key_pem,
+            "identity_token": self._get_or_refresh_token(),
+            "port":           self.listen_port,
+            "status":         "online",
+            "timestamp":      time.time(),
         }
-        
-        sock.sendall(encode_message(request))
-        response = decode_message(sock, timeout=timeout)
-        sock.close()
-        
-        logger.debug(f" Heartbeat gửi tới Discovery Server")
-        return response
-    
-    except Exception as e:
-        logger.error(f" Lỗi gửi heartbeat: {e}")
-        return {"error": str(e)}
 
+    # ------------------------------------------------------------------ #
+    # Registry (local copy for tests; P2PNode maintains authoritative one)#
+    # ------------------------------------------------------------------ #
 
-def list_peers_from_discovery(
-    discovery_host: str,
-    discovery_port: int,
-    timeout: float = 5.0
-) -> dict:
-    """
-    Lấy danh sách peer từ Discovery Server
-    
-    Returns:
-        dict: Danh sách peer online
-    """
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((discovery_host, discovery_port))
-        
-        request = {
-            "type": "list_peers"
+    def update_peer_registry(self, packet: dict, address: tuple) -> None:
+        """Update the local nearby-peer registry (mainly for unit tests —
+        P2PNode.discovered_peers is the authoritative one)."""
+        peer_id = packet.get("peer_id")
+        if not peer_id:
+            return
+        self.nearby_peers[peer_id] = {
+            "peer_id":    peer_id,
+            "username":   packet.get("username"),
+            "fingerprint": packet.get("fingerprint"),
+            "ip":         address[0],
+            "tcp_port":   packet.get("port"),
+            "status":     packet.get("status", "online"),
+            "last_seen":  time.time(),
         }
-        
-        sock.sendall(encode_message(request))
-        response = decode_message(sock, timeout=timeout)
-        sock.close()
-        
-        if response.get("status") == "success":
-            peers = response.get("peers", [])
-            logger.info(f" Tìm thấy {len(peers)} peer online")
-        
-        return response
-    
-    except Exception as e:
-        logger.error(f" Lỗi list peers: {e}")
-        return {"error": str(e)}
 
+    def get_nearby_peers(self) -> dict:
+        """Return a shallow copy of the local nearby-peer registry."""
+        return dict(self.nearby_peers)
 
-if __name__ == "__main__":
-    # Demo: Start discovery server
-    print("\n" + "="*60)
-    print("  Discovery Server Demo")
-    print("="*60 + "\n")
-    
-    server = DiscoveryServer(host="127.0.0.1", port=5555, heartbeat_timeout=30)
-    server.start()
-    
-    print("Discovery Server đang chạy trên 127.0.0.1:5555")
-    print("Nhấn Ctrl+C để thoát\n")
-    
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n\nĐóng server...")
-        server.shutdown()
+    def cleanup_expired_peers(self) -> None:
+        """Remove peers from the local registry whose last-seen exceeds PEER_TIMEOUT."""
+        now     = time.time()
+        expired = [
+            pid for pid, peer in self.nearby_peers.items()
+            if now - peer["last_seen"] > PEER_TIMEOUT
+        ]
+        for pid in expired:
+            del self.nearby_peers[pid]
+
+    # ------------------------------------------------------------------ #
+    # Socket compat shim                                                   #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def _socket(self) -> "socket.socket | None":
+        """Compat: tests inject a mock socket via discovery._socket."""
+        return self._bcast_sock
+
+    @_socket.setter
+    def _socket(self, value: "socket.socket | None") -> None:
+        """Compat: allow tests to replace the broadcast socket with a mock."""
+        self._bcast_sock = value

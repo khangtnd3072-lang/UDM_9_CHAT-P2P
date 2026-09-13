@@ -1,230 +1,218 @@
+"""Protocol handler: packet creation, framing, validation, and socket I/O."""
+
+import datetime
 import json
+import logging
 import struct
-import socket
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Optional
 
-# Try to reuse config if available
-try:
-    from config import MAX_PACKET_SIZE, PROTOCOL_VERSION
-except Exception:
-    MAX_PACKET_SIZE = 131072
-    PROTOCOL_VERSION = "1.0"
+from cryptography.fernet import InvalidToken
 
+from security.crypto import CryptoHandler
+from config import MAX_PACKET_SIZE
 
-def _recv_exact(sock: socket.socket, n: int) -> bytes:
-    """Read exactly n bytes from socket or raise EOFError."""
-    buf = bytearray()
-
-    while len(buf) < n:
-        chunk = sock.recv(n - len(buf))
-
-        if not chunk:
-            raise EOFError("Socket closed while reading")
-
-        buf.extend(chunk)
-
-    return bytes(buf)
+logger = logging.getLogger(__name__)
 
 
-def _add_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Add standard protocol metadata without modifying
-    the original payload.
+class PacketType:
+    """Enumeration of all packet type string constants."""
 
-    Metadata:
-    - protocol_version
-    - message_id
-    - timestamp
-    """
+    HANDSHAKE     = "handshake"
+    HANDSHAKE_ACK = "handshake_ack"
+    SESSION_KEY   = "session_key"
+    MESSAGE       = "message"
+    SYSTEM        = "system"
+    ERROR         = "error"
 
-    message = dict(payload)
+    # Heartbeat (see node.py) — keeps the receive-loop timeout from firing
+    # on an idle-but-alive peer. No reply expected.
+    PING          = "ping"
 
-    message.setdefault("protocol_version", PROTOCOL_VERSION)
-    message.setdefault("message_id", str(uuid.uuid4()))
-    message.setdefault(
-        "timestamp",
-        datetime.now(timezone.utc).isoformat()
-    )
+    # File transfer (Telegram-style): META -> DOWNLOAD_REQUEST -> START ->
+    # CHUNK x N -> COMPLETE (sha256). CANCEL/ERROR abort at any point.
+    FILE_META         = "file_meta"
+    DOWNLOAD_REQUEST  = "download_request"
+    FILE_START        = "file_start"
+    FILE_CHUNK        = "file_chunk"
+    FILE_COMPLETE     = "file_complete"
+    FILE_CANCEL       = "file_cancel"
+    FILE_ERROR        = "file_error"
 
-    return message
-
-
-def _validate_message(payload: Dict[str, Any]) -> None:
-    """Validate basic protocol message structure."""
-
-    if not isinstance(payload, dict):
-        raise ValueError("Message must be a JSON object")
-
-    # Required metadata
-    required_fields = [
-        "protocol_version",
-        "message_id",
-        "timestamp",
-        "type",
-    ]
-
-    for field in required_fields:
-        if field not in payload:
-            raise ValueError(
-                f"Missing required field: {field}"
-            )
-
-    # Validate field types
-    if not isinstance(payload["protocol_version"], str):
-        raise ValueError(
-            "protocol_version must be a string"
-        )
-
-    if not isinstance(payload["message_id"], str):
-        raise ValueError(
-            "message_id must be a string"
-        )
-
-    if not isinstance(payload["timestamp"], str):
-        raise ValueError(
-            "timestamp must be a string"
-        )
-
-    if not isinstance(payload["type"], str):
-        raise ValueError(
-            "type must be a string"
-        )
-
-    # Current project uses "chat"
-    # Keep compatibility with existing node.py.
-    allowed_types = {
-    "chat",
-    "text",
-    "system",
-    "ack",
-    "file_meta",
-    "file_chunk",
-    "handshake_init",
-    "handshake_resp",
-    "enc",
-    "error",
-    "test",
-}
-    # Optional fields for Reply / Forward / UI
-    optional_fields = {
-        "reply_to_id": str,
-        "forward_from": str,
-        "avatar": str,
-        "emoji": str,
-    }
-    for field, field_type in optional_fields.items():
-        if field in payload and payload[field] is not None:
-            if not isinstance(payload[field], field_type):
-                raise ValueError(
-                    f"{field} must be a {field_type.__name__}"
-                )
-    if payload["type"] not in allowed_types:
-            raise ValueError(
-                f"Unsupported message type: {payload['type']}"
-                 )
-           
-        
+    # File packet types that the node passes through without validation.
+    FILE_TYPES: frozenset[str] = frozenset({
+        "file_meta", "download_request",
+        "file_start", "file_chunk", "file_complete",
+        "file_cancel", "file_error",
+    })
 
 
-def encode_message(payload: Dict[str, Any]) -> bytes:
-    """
-    Encode a JSON payload using:
+_HANDSHAKE_REQUIRED: frozenset[str] = frozenset({
+    "type", "username", "version", "listen_port", "public_key",
+})
 
-        [4-byte length prefix][UTF-8 JSON payload]
+_HANDSHAKE_ACK_REQUIRED: frozenset[str] = frozenset({
+    "type", "status", "public_key",
+})
 
-    Automatically adds:
-        - protocol_version
-        - message_id
-        - timestamp
-    """
+_MESSAGE_REQUIRED: frozenset[str] = frozenset({
+    "type", "sender", "payload", "timestamp", "message_id",
+})
 
-    if not isinstance(payload, dict):
-        raise TypeError("payload must be a dictionary")
+_SESSION_KEY_REQUIRED: frozenset[str] = frozenset({
+    "type", "payload",
+})
 
-    # Do not modify the original dictionary
-    message = _add_metadata(payload)
-
-    _validate_message(message)
-
-    body = json.dumps(
-        message,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
-
-    length = len(body)
-
-    if length <= 0:
-        raise ValueError("Payload cannot be empty")
-
-    if length > MAX_PACKET_SIZE:
-        raise ValueError(
-            f"Payload too large: {length} > {MAX_PACKET_SIZE}"
-        )
-
-    # 4-byte unsigned integer, big endian
-    header = struct.pack(">I", length)
-
-    return header + body
+# Fields in MESSAGE packets that must be strings.
+_MESSAGE_STRING_FIELDS: frozenset[str] = frozenset({
+    "type", "sender", "message_id", "timestamp",
+})
 
 
-def decode_message(
-    sock: socket.socket,
-    timeout: float | None = None,
-) -> Dict[str, Any]:
-    """
-    Decode one message from a TCP socket.
+class ProtocolHandler:
+    """Central packet creation, framing, validation, and socket I/O."""
 
-    Format:
-        [4-byte length prefix][JSON payload]
-    """
+    HEADER_SIZE     = 4
+    MAX_PACKET_SIZE = MAX_PACKET_SIZE
 
-    old_timeout = sock.gettimeout()
+    def create_packet(
+        self,
+        msg_type: str,
+        sender: str,
+        payload_content: str,
+        crypto: Optional[CryptoHandler] = None,
+    ) -> dict[str, Any]:
+        """Build a packet dict — payload is Fernet-encrypted when crypto is given,
+        plain text otherwise (handshake packets have no session key yet)."""
+        payload: Any = crypto.encrypt(payload_content) if crypto is not None else payload_content
 
-    try:
-        if timeout is not None:
-            sock.settimeout(timeout)
+        return {
+            "type":       msg_type,
+            "sender":     sender,
+            "message_id": str(uuid.uuid4()),
+            "payload":    payload,
+            "timestamp":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
 
-        # Read 4-byte length prefix
-        header = _recv_exact(sock, 4)
+    def serialize(self, packet: dict[str, Any]) -> bytes:
+        """Encode packet as JSON with a 4-byte big-endian length prefix."""
+        json_data = json.dumps(packet).encode("utf-8")
+        return struct.pack("!I", len(json_data)) + json_data
 
-        length = struct.unpack(">I", header)[0]
+    def validate_packet(self, packet: dict[str, Any]) -> bool:
+        """Check packet has the required fields for its type, correctly typed.
+        Malformed packets are silently dropped, never crash the receive loop."""
+        if not isinstance(packet, dict):
+            logger.warning("validate_packet: not a dict")
+            return False
 
-        if length <= 0:
-            raise ValueError(
-                f"Invalid payload length: {length}"
-            )
+        packet_type = packet.get("type")
 
-        if length > MAX_PACKET_SIZE:
-            raise ValueError(
-                f"Payload too large: {length} > {MAX_PACKET_SIZE}"
-            )
+        if packet_type == PacketType.HANDSHAKE:
+            required = _HANDSHAKE_REQUIRED
 
-        # Read exactly the JSON body
-        body = _recv_exact(sock, length)
+        elif packet_type == PacketType.HANDSHAKE_ACK:
+            required = _HANDSHAKE_ACK_REQUIRED
 
-        # Decode UTF-8
+        elif packet_type == PacketType.MESSAGE:
+            required = _MESSAGE_REQUIRED
+            for field in _MESSAGE_STRING_FIELDS:
+                if not isinstance(packet.get(field), str):
+                    logger.warning("validate_packet: '%s' must be a string", field)
+                    return False
+
+        elif packet_type == PacketType.SESSION_KEY:
+            required = _SESSION_KEY_REQUIRED
+            if not isinstance(packet.get("payload"), str):
+                logger.warning("validate_packet: 'payload' must be a string")
+                return False
+
+        elif packet_type in PacketType.FILE_TYPES:
+            # File-transfer packets are validated by TransferManager, not here.
+            return True
+
+        elif packet_type == PacketType.PING:
+            return True   # no payload — the type field alone is the whole packet
+
+        else:
+            logger.warning("validate_packet: unknown type '%s'", packet_type)
+            return False
+
+        for field in required:
+            if field not in packet:
+                logger.warning("validate_packet: missing field '%s'", field)
+                return False
+
+        return True
+
+    def decrypt_payload(
+        self,
+        packet: dict[str, Any],
+        crypto: Optional[CryptoHandler] = None,
+    ) -> str:
+        """Decrypt packet["payload"], or return it as-is if crypto is None."""
+        if crypto is not None:
+            return crypto.decrypt(packet["payload"])
+        return packet["payload"]
+
+    def validate_and_decrypt(
+        self,
+        packet: dict[str, Any],
+        crypto: Optional[CryptoHandler] = None,
+    ) -> Optional[str]:
+        """Validate then decrypt packet, returning None on any failure."""
+        if not self.validate_packet(packet):
+            return None
         try:
-            text = body.decode("utf-8")
-        except UnicodeDecodeError as e:
-            raise ValueError(
-                "Invalid UTF-8 payload"
-            ) from e
+            return self.decrypt_payload(packet, crypto)
+        except (InvalidToken, ValueError) as exc:
+            logger.warning("Decryption failed: %s", exc)
+            return None
 
-        # Decode JSON
+    def receive_exact(self, peer_socket: Any, size: int) -> bytes:
+        """Read exactly size bytes, or b"" if the connection closes first."""
+        received_data = bytearray()
+        while len(received_data) < size:
+            data = peer_socket.recv(size - len(received_data))
+            if not data:
+                return b""
+            received_data.extend(data)
+        return bytes(received_data)
+
+    def receive_packet(self, peer_socket: Any) -> Optional[dict[str, Any]]:
+        """Read one framed packet, or None if closed/oversized/malformed —
+        never raises, so the receive loop survives a bad peer."""
         try:
-            message = json.loads(text)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                "Invalid JSON payload"
-            ) from e
+            header = self.receive_exact(peer_socket, self.HEADER_SIZE)
+            if not header:
+                return None
 
-        # Validate protocol structure
-        _validate_message(message)
+            (packet_length,) = struct.unpack("!I", header)
 
-        return message
+            if packet_length > MAX_PACKET_SIZE:
+                logger.warning("Oversized packet (%d bytes) — dropping", packet_length)
+                return None
 
-    finally:
-        sock.settimeout(old_timeout)
+            packet_data = self.receive_exact(peer_socket, packet_length)
+            if not packet_data:
+                return None
+
+            result = json.loads(packet_data.decode("utf-8"))
+            if not isinstance(result, dict):
+                logger.warning("receive_packet: expected JSON object, got %s", type(result).__name__)
+                return None
+            return result
+
+        except OSError as exc:
+            # WinError 10054 (connection reset), 10053 (connection aborted), and
+            # 10038 (recv on a socket closed by stop_server() from another thread)
+            # are expected during node shutdown — log at DEBUG, not ERROR.
+            if exc.winerror in (10054, 10053, 10038) if hasattr(exc, "winerror") else False:
+                logger.debug("Socket closed by remote: %s", exc)
+            else:
+                logger.error("Socket receive failed: %s", exc)
+            return None
+
+        except (json.JSONDecodeError, UnicodeDecodeError, struct.error) as exc:
+            logger.warning("receive_packet: malformed data — %s", exc)
+            return None
