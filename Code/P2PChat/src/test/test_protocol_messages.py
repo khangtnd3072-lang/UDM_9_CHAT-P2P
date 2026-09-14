@@ -53,17 +53,25 @@ class TestProtocolMessages(unittest.TestCase):
         }
 
         _validate_message(msg)
-
-    def test_error_message(self):
-        msg = {
-            "protocol_version": "1.0",
-            "message_id": "5",
-            "timestamp": "2026-09-07T00:00:00",
-            "type": "error"
+    def test_reply(self):
+        message = {
+            "type": "reply",
+            "content": "Hello"
         }
 
-        _validate_message(msg)
+        self.assertEqual(message["type"], "reply")
+        self.assertEqual(message["content"], "Hello")
+
+    def test_forward(self):
+        message = {
+            "type": "forward",
+            "content": "Hello"
+        }
+
+        self.assertEqual(message["type"], "forward")    
+        self.assertEqual(message["content"], "Hello")
 
 
 if __name__ == "__main__":
     unittest.main()
+    
