@@ -65,7 +65,7 @@ _SESSION_KEY_REQUIRED: frozenset[str] = frozenset({
 
 # Fields in MESSAGE packets that must be strings.
 _MESSAGE_STRING_FIELDS: frozenset[str] = frozenset({
-    "type", "sender", "message_id", "timestamp",
+    "type", "sender", "message_id", "timestamp", "emoji",
 })
 
 
@@ -91,6 +91,7 @@ class ProtocolHandler:
             "sender":     sender,
             "message_id": str(uuid.uuid4()),
             "payload":    payload,
+            "emoji":      "",
             "timestamp":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
 
