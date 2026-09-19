@@ -1,0 +1,42 @@
+{
+    "peerX": {
+        "fingerprint": "aa:bb",
+        "trust_state": "BLOCKED"
+    },
+    "47cd61ee81aa2bb271149d640d511716346696ad6c33218fb60554224b8989a5": {
+        "fingerprint": "47:CD:61:EE:81:AA:2B:B2:71:14:9D:64:0D:51:17:16:34:66:96:AD:6C:33:21:8F:B6:05:54:22:4B:89:89:A5",
+        "trust_state": "TRUSTED"
+    },
+    "dc47f1467740aa2702b567353ac768394ed256cc3342b601558a18a052d7c02f": {
+        "fingerprint": "DC:47:F1:46:77:40:AA:27:02:B5:67:35:3A:C7:68:39:4E:D2:56:CC:33:42:B6:01:55:8A:18:A0:52:D7:C0:2F",
+        "trust_state": "TRUSTED"
+    },
+    "3e0a64ae59d00acb282eee44933012e871f773a5de49298769cc550152f58849": {
+        "fingerprint": "3E:0A:64:AE:59:D0:0A:CB:28:2E:EE:44:93:30:12:E8:71:F7:73:A5:DE:49:29:87:69:CC:55:01:52:F5:88:49",
+        "trust_state": "VERIFIED"
+    },
+    "d08f867334da7eb45881e1a68a41cab6e6b8d855b885bdde1943b36db98e70c1": {
+        "fingerprint": "D0:8F:86:73:34:DA:7E:B4:58:81:E1:A6:8A:41:CA:B6:E6:B8:D8:55:B8:85:BD:DE:19:43:B3:6D:B9:8E:70:C1",
+        "trust_state": "TRUSTED"
+    },
+    "19102a39729a8ec200ba6a446263a5b74c9101517f25c636500bbc82a8c379dc": {
+        "fingerprint": "19:10:2A:39:72:9A:8E:C2:00:BA:6A:44:62:63:A5:B7:4C:91:01:51:7F:25:C6:36:50:0B:BC:82:A8:C3:79:DC",
+        "trust_state": "TRUSTED"
+    },
+    "f4ee998143d048f22a2119bc1fecb9d4066d5d2ec59d7a304ba1fb419bd124b6": {
+        "fingerprint": "F4:EE:99:81:43:D0:48:F2:2A:21:19:BC:1F:EC:B9:D4:06:6D:5D:2E:C5:9D:7A:30:4B:A1:FB:41:9B:D1:24:B6",
+        "trust_state": "VERIFIED"
+    },
+    "8ae4a16d4ec08d9b80b7c5ee3e7959af098f45d575d397cbbfe2b7008ed65325": {
+        "fingerprint": "8A:E4:A1:6D:4E:C0:8D:9B:80:B7:C5:EE:3E:79:59:AF:09:8F:45:D5:75:D3:97:CB:BF:E2:B7:00:8E:D6:53:25",
+        "trust_state": "TRUSTED"
+    },
+    "30c9cb73951b2efc2bf9a4c2e137d4063878a29cee10f7acee5ad152cc113386": {
+        "fingerprint": "30:C9:CB:73:95:1B:2E:FC:2B:F9:A4:C2:E1:37:D4:06:38:78:A2:9C:EE:10:F7:AC:EE:5A:D1:52:CC:11:33:86",
+        "trust_state": "TRUSTED"
+    },
+    "53c69395b2b2cee4460143803affefe2715efa3078a255e73a0d32101054d2de": {
+        "fingerprint": "53:C6:93:95:B2:B2:CE:E4:46:01:43:80:3A:FF:EF:E2:71:5E:FA:30:78:A2:55:E7:3A:0D:32:10:10:54:D2:DE",
+        "trust_state": "VERIFIED"
+    }
+}

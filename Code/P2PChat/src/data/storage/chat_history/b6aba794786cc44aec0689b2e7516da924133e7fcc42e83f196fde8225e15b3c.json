@@ -1,0 +1,65 @@
+[
+    {
+        "message_id": "sent-1789430603027051000",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "sent",
+        "content": "hello",
+        "timestamp": 1789430603.027053
+    },
+    {
+        "message_id": "sent-1789828300123240100",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "sent",
+        "content": "đâu rồi",
+        "timestamp": 1789828300.1232505
+    },
+    {
+        "message_id": "3f3f363c-aa5e-413c-8eca-91367798516d",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "received",
+        "content": "admin secret",
+        "timestamp": 1789829917.4534497
+    },
+    {
+        "message_id": "a683a290-368d-4b2d-ad2a-bf2b403570da",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "received",
+        "content": "ug1234567890-aush cfugdas gfauh wufhruwahquifaifhuiagyugsdyuaywg iufduwau ruqwihriohiquuwchr awnrjdabjbfdrhbawhhgw abhbfdafwbjfjeejabfjbjabfjbebfbuah i;fawfuiahuhfuheauhfuhau hfugawy gryauyh fuahuwrfhauwhru auwhuhawuvrauwhnvrha7whyr7a73hrahbruhauhruaiuifhiaehigfanfiamkfnuawheurfnaknfjkanjfnajwnuhruihuahfdinsajfnajk",
+        "timestamp": 1789830174.0091434
+    },
+    {
+        "message_id": "sent-1789830698415591200",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "sent",
+        "content": "1",
+        "timestamp": 1789830698.4155934
+    },
+    {
+        "message_id": "cc44e08d-616a-44da-8eec-19b4c48f3654",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "received",
+        "content": "{\"version\":\"v1\",\"alg\":\"AES-256-GCM\",\"key_id\":\"b42d36a15f6d7b22\",\"timestamp\":\"2026-09-19T15:13:05.343671+00:00\",\"nonce\":\"KpHq8kJ8h2hHTHbt\",\"ciphertext\":\"AnGcb5HMn5ROPgGK2eFPN1g=\",\"mac\":\"c85036f401db5e3f2cc698817bde40ee6d731f5f5161358c5f5125e6b4ff74ba\"}",
+        "timestamp": 1789830785.344814
+    },
+    {
+        "message_id": "sent-1789832001930394900",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "sent",
+        "content": "TEST MAC",
+        "timestamp": 1789832001.930398
+    },
+    {
+        "message_id": "sent-1789832059772460300",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "sent",
+        "content": "TEST MAC",
+        "timestamp": 1789832059.7724626
+    },
+    {
+        "message_id": "sent-1789832131414890700",
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "direction": "sent",
+        "content": "TEST MAC",
+        "timestamp": 1789832131.414897
+    }
+]

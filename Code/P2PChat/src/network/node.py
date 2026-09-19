@@ -5,6 +5,7 @@
 
 import collections
 import datetime
+import json
 import logging
 import socket
 import threading
@@ -13,6 +14,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from security.crypto import CryptoHandler
 from security.jwt_handler import JWTHandler
+from security.message_security import MessageSecurity
 from security.rsa_utils import RSAUtils
 from identity.identity_manager import IdentityManager
 from identity.identity_manager import generate_peer_id, generate_fingerprint
@@ -64,6 +66,7 @@ class P2PNode:
         on_disconnect=None,
         on_connected=None,
         on_peer_discovered=None,
+        on_security_warning=None,
     ) -> None:
         """Construct the node (does not bind or start threads yet); see each
         callback parameter's name for its argument signature."""
@@ -71,10 +74,11 @@ class P2PNode:
         self.port     = port
         self.username = username
 
-        self.on_message         = on_message
-        self.on_disconnect      = on_disconnect
-        self.on_connected       = on_connected
-        self.on_peer_discovered = on_peer_discovered
+        self.on_message          = on_message
+        self.on_disconnect       = on_disconnect
+        self.on_connected        = on_connected
+        self.on_peer_discovered  = on_peer_discovered
+        self.on_security_warning = on_security_warning
         # Wired by TransferManager after construction (not passed in __init__
         # to avoid circular import).  Set to None so attribute always exists.
         self.on_file_packet     = None   # pylint: disable=invalid-name
@@ -294,8 +298,12 @@ class P2PNode:
 
         crypto: CryptoHandler | None = session.get("crypto")
         try:
+            payload_content = message
+            if crypto is not None:
+                message_security = MessageSecurity(crypto.get_key())
+                payload_content = json.dumps(message_security.encrypt(message), separators=(",", ":"))
             packet = self.protocol_handler.create_packet(
-                PacketType.MESSAGE, self.username, message, crypto=crypto,
+                PacketType.MESSAGE, self.username, payload_content, crypto=crypto,
             )
             data = self.protocol_handler.serialize(packet)
 
@@ -714,6 +722,9 @@ class P2PNode:
             return
 
         if not self.protocol_handler.validate_packet(packet):
+            logger.warning("[NODE] Malformed packet rejected from %s; sender=%s", tcp_addr, packet.get("sender", "unknown"))
+            if self.on_security_warning is not None:
+                self._fire_callback(self.on_security_warning, "⚠  Malformed packet rejected.")
             return
 
         message_id = packet["message_id"]
@@ -746,8 +757,21 @@ class P2PNode:
 
         try:
             payload = self.protocol_handler.decrypt_payload(packet, crypto=session_crypto)
+            if session_crypto is not None and isinstance(payload, str):
+                try:
+                    envelope = json.loads(payload)
+                    if isinstance(envelope, dict) and {"nonce", "ciphertext", "mac"}.issubset(envelope):
+                        message_security = MessageSecurity(session_crypto.get_key())
+                        payload = message_security.decrypt(envelope)
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    logger.warning("[NODE] Message-security envelope rejected from %s: %s", tcp_addr, exc)
+                    if self.on_security_warning is not None:
+                        self._fire_callback(self.on_security_warning, "⚠  Tampered or invalid message rejected.")
+                    return
         except (InvalidToken, ValueError) as exc:
             logger.warning("[NODE] Decrypt failed from %s: %s", tcp_addr, exc)
+            if self.on_security_warning is not None:
+                self._fire_callback(self.on_security_warning, "⚠  Decryption failed: message dropped.")
             return
 
         self._fire_callback(

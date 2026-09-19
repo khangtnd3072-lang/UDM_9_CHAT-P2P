@@ -84,6 +84,7 @@ class ChatController:
             on_disconnect      = self._on_disconnect,
             on_connected       = self._on_connected,
             on_peer_discovered = self._on_peer_discovered,
+            on_security_warning = self.on_system,
         )
 
         try:

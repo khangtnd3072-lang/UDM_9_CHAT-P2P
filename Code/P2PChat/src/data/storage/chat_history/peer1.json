@@ -1,0 +1,16 @@
+[
+    {
+        "message_id": "sent-1789829126353824700",
+        "peer_id": "peer1",
+        "direction": "sent",
+        "content": "hello",
+        "timestamp": 1789829126.3538387
+    },
+    {
+        "message_id": "sent-1789833016457639200",
+        "peer_id": "peer1",
+        "direction": "sent",
+        "content": "hello",
+        "timestamp": 1789833016.4576442
+    }
+]

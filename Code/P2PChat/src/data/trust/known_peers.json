@@ -1,0 +1,30 @@
+{
+    "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c": {
+        "fingerprint": "B6:AB:A7:94:78:6C:C4:4A:EC:06:89:B2:E7:51:6D:A9:24:13:3E:7F:CC:42:E8:3F:19:6F:DE:82:25:E1:5B:3C",
+        "trust_state": "VERIFIED"
+    },
+    "new_d1ce3b1b-b7c4-482d-b670-40a1229eef73": {
+        "fingerprint": "ABC123",
+        "trust_state": "TRUSTED"
+    },
+    "verified_9ea9dbec-1204-432a-8311-5609cf1f794a": {
+        "fingerprint": "ABC123",
+        "trust_state": "VERIFIED"
+    },
+    "mismatch_0534e72e-e22e-41ca-9415-00e236a2e6f0": {
+        "fingerprint": "OLD_FP",
+        "trust_state": "TRUSTED"
+    },
+    "blocked_04912529-a154-4223-9cc8-a4f7e52c7a0e": {
+        "fingerprint": "FP",
+        "trust_state": "BLOCKED"
+    },
+    "trusted_4bf0e41d-c5a9-4fce-9ed4-d258ecb1c4ef": {
+        "fingerprint": "FP",
+        "trust_state": "TRUSTED"
+    },
+    "update_peer": {
+        "fingerprint": "NEW",
+        "trust_state": "BLOCKED"
+    }
+}

@@ -20,6 +20,7 @@ from network.node import (
     _MAX_MESSAGE_AGE_SECONDS,
 )
 from message.protocol import PacketType
+from security.crypto import CryptoHandler
 from security.rsa_utils import RSAUtils
 from security.jwt_handler import JWTHandler
 from identity.identity_manager import generate_peer_id, generate_fingerprint
@@ -284,6 +285,30 @@ def test_handle_file_packet_delivered_for_normal_peer():
     node._handle_file_packet({"type": PacketType.FILE_META}, sock)
 
     assert len(received) == 1
+
+
+def test_security_warning_fires_for_invalid_message_packet():
+    node = create_node()
+    sock = cast(socket.socket, FakeSocket())
+    warnings: list[str] = []
+    node.on_security_warning = lambda message: warnings.append(message)
+
+    node._register_peer("1.2.3.4:5000", sock, True)
+    node.peer_sessions["1.2.3.4:5000"]["peer_id"] = "peerX"
+    node.peer_sessions["1.2.3.4:5000"]["state"] = "active"
+    node.peer_sessions["1.2.3.4:5000"]["crypto"] = CryptoHandler(key=Fernet.generate_key())
+
+    packet = {
+        "type": "message",
+        "sender": "peerX",
+        "message_id": "msg-123",
+        "payload": "not-valid-tok",
+        "timestamp": _iso_now(0),
+    }
+
+    node._handle_message(packet, sock)
+
+    assert warnings and "⚠" in warnings[0]
 
 
 # --------------------------------------------------------------------- #

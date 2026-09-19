@@ -1,0 +1,9 @@
+[
+    {
+        "message_id": "1",
+        "peer_id": "peer_chat",
+        "direction": "sent",
+        "content": "Hello",
+        "timestamp": 123
+    }
+]

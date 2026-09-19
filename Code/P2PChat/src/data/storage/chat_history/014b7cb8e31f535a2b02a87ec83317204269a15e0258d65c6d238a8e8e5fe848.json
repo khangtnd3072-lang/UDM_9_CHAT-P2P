@@ -1,0 +1,16 @@
+[
+    {
+        "message_id": "sent-1789832490119691500",
+        "peer_id": "014b7cb8e31f535a2b02a87ec83317204269a15e0258d65c6d238a8e8e5fe848",
+        "direction": "sent",
+        "content": "test ciphertext",
+        "timestamp": 1789832490.1196995
+    },
+    {
+        "message_id": "sent-1789833164566721500",
+        "peer_id": "014b7cb8e31f535a2b02a87ec83317204269a15e0258d65c6d238a8e8e5fe848",
+        "direction": "sent",
+        "content": "test MAC",
+        "timestamp": 1789833164.5667295
+    }
+]

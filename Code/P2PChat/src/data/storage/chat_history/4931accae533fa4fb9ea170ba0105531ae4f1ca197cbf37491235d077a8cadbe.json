@@ -1,0 +1,72 @@
+[
+    {
+        "message_id": "c2c3a51c-75a4-4025-a8be-d06bccc6859a",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "received",
+        "content": "hello",
+        "timestamp": 1789430603.0278
+    },
+    {
+        "message_id": "d82084a9-3abb-4df5-bd84-9f7467ea088d",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "received",
+        "content": "hello",
+        "timestamp": 1789828288.361107
+    },
+    {
+        "message_id": "25b7bca7-28cb-42d0-a162-24cfbd220c6d",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "received",
+        "content": "đâu rồi",
+        "timestamp": 1789828300.1246266
+    },
+    {
+        "message_id": "sent-1789829917452740500",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "sent",
+        "content": "admin secret",
+        "timestamp": 1789829917.4527428
+    },
+    {
+        "message_id": "sent-1789830174008710500",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "sent",
+        "content": "ug1234567890-aush cfugdas gfauh wufhruwahquifaifhuiagyugsdyuaywg iufduwau ruqwihriohiquuwchr awnrjdabjbfdrhbawhhgw abhbfdafwbjfjeejabfjbjabfjbebfbuah i;fawfuiahuhfuheauhfuhau hfugawy gryauyh fuahuwrfhauwhru auwhuhawuvrauwhnvrha7whyr7a73hrahbruhauhruaiuifhiaehigfanfiamkfnuawheurfnaknfjkanjfnajwnuhruihuahfdinsajfnajk",
+        "timestamp": 1789830174.0087128
+    },
+    {
+        "message_id": "5c2f1bac-8573-4a37-a46b-cc998bf6afca",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "received",
+        "content": "1",
+        "timestamp": 1789830698.4164531
+    },
+    {
+        "message_id": "sent-1789830785344218100",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "sent",
+        "content": "1",
+        "timestamp": 1789830785.3442202
+    },
+    {
+        "message_id": "d28c7d46-1f79-4359-83d1-46b2b1ccc8f3",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "received",
+        "content": "{\"version\":\"v1\",\"alg\":\"AES-256-GCM\",\"key_id\":\"0585808808721b98\",\"timestamp\":\"2026-09-19T15:33:21.929772+00:00\",\"nonce\":\"Rgvutf8qYpWjaoxn\",\"ciphertext\":\"IzoO9Jy3FtL9WgyBNFAbJWGaYfAFb0Dj\",\"mac\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
+        "timestamp": 1789832001.9312663
+    },
+    {
+        "message_id": "5e926d37-b54c-44ef-89f6-af471c0ab009",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "received",
+        "content": "{\"version\":\"v1\",\"alg\":\"AES-256-GCM\",\"key_id\":\"0585808808721b98\",\"timestamp\":\"2026-09-19T15:34:19.772211+00:00\",\"nonce\":\"5mXyY0qpufPvsPdO\",\"ciphertext\":\"CK677Dvy1qKASbgCTupFc8newtF1HzWc\",\"mac\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
+        "timestamp": 1789832059.7728982
+    },
+    {
+        "message_id": "f86d20ee-9bc2-4568-a2f5-4a33b3c0e1dc",
+        "peer_id": "4931accae533fa4fb9ea170ba0105531ae4f1ca197cbf37491235d077a8cadbe",
+        "direction": "received",
+        "content": "{\"version\":\"v1\",\"alg\":\"AES-256-GCM\",\"key_id\":\"0585808808721b98\",\"timestamp\":\"2026-09-19T15:35:31.414155+00:00\",\"nonce\":\"unN8eFCLjLpLPyiw\",\"ciphertext\":\"Wx/irKAhZ2BM04RvuF7SH+aoRcXjRmkF\",\"mac\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
+        "timestamp": 1789832131.4156725
+    }
+]

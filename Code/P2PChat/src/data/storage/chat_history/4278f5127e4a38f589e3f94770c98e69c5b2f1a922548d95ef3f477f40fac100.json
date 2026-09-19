@@ -1,0 +1,9 @@
+[
+    {
+        "message_id": "8f3f9458-bfcb-4acf-bd29-acc57234f3ba",
+        "peer_id": "4278f5127e4a38f589e3f94770c98e69c5b2f1a922548d95ef3f477f40fac100",
+        "direction": "received",
+        "content": "test ciphertext",
+        "timestamp": 1789832490.1222374
+    }
+]

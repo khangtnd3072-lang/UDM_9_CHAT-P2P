@@ -1,0 +1,26 @@
+{
+    "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c": {
+        "peer_id": "b6aba794786cc44aec0689b2e7516da924133e7fcc42e83f196fde8225e15b3c",
+        "alias": "Admin-PC",
+        "trust_state": "TRUSTED",
+        "fingerprint": "B6:AB:A7:94:78:6C:C4:4A:EC:06:89:B2:E7:51:6D:A9:24:13:3E:7F:CC:42:E8:3F:19:6F:DE:82:25:E1:5B:3C"
+    },
+    "peer_test": {
+        "peer_id": "peer_test",
+        "alias": "Tai",
+        "trust_state": "TRUSTED",
+        "fingerprint": "ABC123"
+    },
+    "peer_update": {
+        "peer_id": "peer_update",
+        "alias": "New Name",
+        "trust_state": "TRUSTED",
+        "fingerprint": "ABC"
+    },
+    "peer_persist": {
+        "peer_id": "peer_persist",
+        "alias": "Tai",
+        "trust_state": "TRUSTED",
+        "fingerprint": "ABC"
+    }
+}
